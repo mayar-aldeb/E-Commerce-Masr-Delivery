@@ -1,16 +1,23 @@
 package org.route.service;
 
 
+import org.route.dto.OrdersOfCustomer;
+import org.route.dto.RestaurantRevenuesResponse;
+import org.route.dto.customer.CustomerResponse;
+import org.route.dto.restaurant.MenuItemResponse;
+import org.route.dto.restaurant.RestaurantResponse;
+import org.route.dto.rider.RiderResponse;
 import org.route.enums.OrderStatus;
 import lombok.RequiredArgsConstructor;
+import org.route.exception.ReportException;
+import org.route.mapper.*;
 import org.route.model.*;
 import org.route.model.Items.MenuItem;
 import org.route.model.Items.OrderItem;
-import org.route.model.orderPromotion.promotionCondition.ConditionFactory;
-import org.route.model.orderPromotion.promotionCondition.PromotionCondition;
+import org.route.model.orderPromotion.Promotion;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.route.repository.*;
-import org.route.validation.InputValidation;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -25,18 +32,23 @@ import java.util.stream.Collectors;
 public class AdminService {
 
     private final OrderInvoiceService invoiceService;
-    private final OrderService orderService;
     private final OrderInvoiceRepository orderInvoiceRepository;
     private final OrderRepository  orderRepository;
     private final RestaurantRepository  restaurantRepository;
     private final RiderRepository  riderRepository;
     private final CustomerRepository  customerRepository;
+    private final PromotionRepository promotionRepository;
+    private final RestaurantService restaurantService;
+    private final RestaurantMapper restaurantMapper;
+    private final RiderMapper riderMapper;
+    private final MenuItemMapper menuItemMapper;
+    private final OrderMapper orderMapper;
+    private final CustomerMapper customerMapper;
 
 
-    public void calculateTotalRevenue(LocalDate startDate, LocalDate endDate ){
-        if(endDate.isBefore(startDate)){
-            System.out.println("invalid end date.");
-        }
+    public BigDecimal calculateTotalRevenue(LocalDate startDate, LocalDate endDate ){
+        if(endDate.isBefore(startDate))
+            throw new ReportException(HttpStatus.BAD_REQUEST, "End date is before start date");
         BigDecimal [] totalSum = {BigDecimal.valueOf(0)};
         orderInvoiceRepository.findAll().stream().
                 filter(invoice -> invoice.getOrderDate().toLocalDate().isAfter(startDate)||
@@ -46,114 +58,85 @@ public class AdminService {
                 forEach(invoice ->
                    totalSum[0]=totalSum[0].add(invoiceService.calculateTotal(invoice))
                  );
-        System.out.println("total Revenue = "+totalSum[0]);
+        return totalSum[0];
     }
 
-    public void displayTopFiveRestaurants(){
-        if(orderRepository.findAll().isEmpty()||restaurantRepository.findAll().isEmpty()){
-            System.out.println("no data created yet.");
-            return;
-        }
-        int month=InputValidation.setInt("enter month number: ");
-        if(month>12){
-            System.out.println("invalid month number.");
-            return;
-        }
-        int year=InputValidation.setInt("enter year number: ");
-        if(year<2000||year>2026){
-            System.out.println("invalid year number.");
-            return;
-        }
+    public RestaurantRevenuesResponse mapToRestaurantRevenuesResponse(Restaurant restaurant,BigDecimal totalRevenue){
+        RestaurantRevenuesResponse response = new RestaurantRevenuesResponse();
+        response.setRestaurantId(restaurant.getId());
+        response.setRestaurantName(restaurant.getName());
+        response.setRestaurantRevenues(totalRevenue);
+        return  response;
+    }
+
+    public List<RestaurantRevenuesResponse> displayTopFiveRestaurants(int month, int year){
+        if(month>12)
+            throw new ReportException(HttpStatus.BAD_REQUEST, "Month must be between 1 and 12");
+        if(year<2000||year>2026)
+            throw new ReportException(HttpStatus.BAD_REQUEST, "Year must be between 2000 and 2026");
         Map<Integer,BigDecimal> restaurantsRevenues=new HashMap<>();
         orderRepository.findAll().stream().
                 filter(order -> order.getPlacedAt().getMonthValue()== month).
                 filter(order -> order.getPlacedAt().getYear()==year).
                 filter(order -> order.getOrderStatus()!=OrderStatus.CANCELLED).
                 forEach(order ->{
-                if(restaurantsRevenues.containsKey(order.getRestaurantId())){
-                    restaurantsRevenues.put(order.getRestaurantId(),
+                if(restaurantsRevenues.containsKey(order.getRestaurant().getId())){
+                    restaurantsRevenues.put(order.getRestaurant().getId(),
                             order.getTotalPrice().
-                                    add(restaurantsRevenues.get(order.getRestaurantId())));
+                                    add(restaurantsRevenues.get(order.getRestaurant().getId())));
                 }
                 else
-                    restaurantsRevenues.put(order.getRestaurantId(),order.getTotalPrice());
+                    restaurantsRevenues.put(order.getRestaurant().getId(),order.getTotalPrice());
                 });
-        restaurantsRevenues.entrySet().stream().
+        return restaurantsRevenues.entrySet().stream().
                 sorted(Map.Entry.<Integer, BigDecimal>comparingByValue().reversed()).
-                limit(5).
-                forEach(entry->
-                    System.out.println(restaurantRepository.findById(entry.getKey()).orElseThrow().getName()+" : "+entry.getValue())
-                );
+                limit(5)
+                .map(entry->
+                        mapToRestaurantRevenuesResponse(
+                                restaurantService.findRestaurantById(entry.getKey())
+                                ,entry.getValue()))
+                .toList();
+
     }
 
-    public void calculateAverageOrder(){
-        if(orderRepository.findAll().isEmpty()){
-            System.out.println("no orders created yet.");
-            return;
-        }
-        String district=InputValidation.setValidString("Enter district: ");
+    public double calculateAverageOrder( String district){
         double avg= orderRepository.findAll().stream().
                 filter(order -> order.getDeliveryAddress().getDistrict().equals(district)).
                 mapToDouble(o->o.getTotalPrice().doubleValue()).
                 average().orElse(0.0);
-        if(avg==0.0){
-            System.out.println("no orders in this district.");
-            return;
-        }
-        System.out.println("Average prices = "+avg);
+        if(avg==0.0)
+            throw new ReportException(HttpStatus.BAD_REQUEST,"no orders in this district.");
+        return avg;
     }
 
-    public void filterRestaurants(){
-        if(restaurantRepository.findAll().isEmpty()){
-            System.out.println("no restaurant created yet");
-            return;
-        }
-        boolean []flag = {false};
-        Comparator<Restaurant> comparator=Comparator.comparing(Restaurant::getRate).reversed().thenComparing(Restaurant::getName);
-        restaurantRepository.findAll().stream().
-                filter(restaurant -> restaurant.getRate()>4.5).
-                filter(restaurant -> restaurant.getCompletedOrders()>=20).
-                sorted(comparator).
-                forEach(r->{
-                        System.out.println(r.getName());
-                        flag[0]=true;
-                });
-        if(!flag[0])
-            System.out.println("no restaurant matches the conditions.");
+    public void addPromotion(Promotion promotion){
+        promotionRepository.addPromotion(promotion);
     }
 
-    public void countOrdersPerStatus(){
-        if(orderRepository.findAll().isEmpty()){
-            System.out.println("no orders created yet.");
-            return;
-        }
-        orderRepository.findAll().stream().
+    public List<Promotion> getPromotions(){
+        return promotionRepository.findAll();
+    }
+
+    public List<RestaurantResponse> filterRestaurants(double rate,int completedOrders){
+       return restaurantRepository.findAll().stream().
+                filter(restaurant -> restaurant.getRate()>rate).
+                filter(restaurant -> restaurant.getCompletedOrders()>=completedOrders).
+                map(restaurantMapper::toRestaurantResponse).
+                toList();
+    }
+
+    public Map<OrderStatus,Long> countOrdersPerStatus(){
+        return orderRepository.findAll().stream().
                 map(Order::getOrderStatus).
                 collect(Collectors.groupingBy(
-                        Function.identity(),Collectors.counting())).
-                forEach((key, value) -> System.out.println(key + " : " + value));
+                        Function.identity(),Collectors.counting()));
     }
 
-    public void displayRidersDeliveries(){
-        if(riderRepository.findAllRiders().isEmpty()){
-            System.out.println("no riders created yet.");
-            return;
-        }
-        riderRepository.findAllRiders().forEach(rider -> {
-            System.out.println("rider name: "+rider.getName());
-            rider.getCompletedDeliveries().
-                    reversed().
-                    forEach(o->System.out.println("order ID: "+o.getId()));
-            System.out.println("============================================");
-        });
-
+    public List<RiderResponse> displayRidersDeliveries(){
+       return riderRepository.findAllRiders().stream().map(riderMapper::toResponse).toList();
     }
 
-    public void displayFrequentlyMenuItem(){
-        if(orderRepository.findAll().isEmpty()){
-            System.out.println("no orders created yet.");
-            return ;
-        }
+    public MenuItemResponse displayFrequentlyMenuItem(){
         MenuItem menuItem= orderRepository.findAll().stream().
                 flatMap(order -> order.getItems().values().stream()).
                 map(OrderItem::getItem).
@@ -164,38 +147,25 @@ public class AdminService {
                 max(Map.Entry.comparingByValue()).
                 map(Map.Entry::getKey).
                 orElse(null);
-        if(menuItem==null)
-            return;
-        menuItem.displayItem();
+        return menuItemMapper.toMenuItemResponse(menuItem);
     }
 
-    public void displayOrdersOfCustomer(){
-        if(orderRepository.findAll().isEmpty()){
-            System.out.println("no orders created yet.");
-            return;
-        }
-        int customerId=InputValidation.setInt("enter customer ID: ");
+    public OrdersOfCustomer displayOrdersOfCustomer(int customerId){
         Comparator<Order> comparator=Comparator.comparing(Order::getPlacedAt).reversed();
         BigDecimal[] totalSpend={new BigDecimal(0)};
+        OrdersOfCustomer ordersOfCustomer = new OrdersOfCustomer();
         orderRepository.findAll().stream().
-                filter(order -> order.getCustomerId()==customerId).
+                filter(order -> order.getCustomer().getId()==customerId).
                 sorted(comparator).forEach(order->{
-                    orderService.displayOrder(order);
+                    ordersOfCustomer.getOrders().add(orderMapper.toOrderResponse(order));
                     totalSpend[0]=totalSpend[0].add(order.getTotalPrice());
                 });
-        if((totalSpend[0].compareTo(BigDecimal.valueOf(0))==0)){
-            System.out.println("there is no orders for this customer.");
-            return;
-        }
-        System.out.println("Customer total spend = "+totalSpend[0]);
+        ordersOfCustomer.setTotalSpend(totalSpend[0]);
+        return ordersOfCustomer;
     }
 
-    public void findPeakHour(){
-        if(orderRepository.findAll().isEmpty()){
-            System.out.println("no orders assigned yet.");
-            return;
-        }
-        int peakHour= orderRepository.findAll().stream().
+    public int findPeakHour(){
+        return orderRepository.findAll().stream().
                 map(order -> order.getPlacedAt().getHour()).
                 collect(Collectors.groupingBy(
                         Function.identity(),Collectors.counting())).
@@ -204,52 +174,16 @@ public class AdminService {
                 max(Map.Entry.comparingByValue()).
                 map(Map.Entry::getKey).
                 orElse(0);
-        System.out.println("peak hour is: "+peakHour);
     }
 
-    public void findNotActiveCustomers(){
-        if(customerRepository.findAll().isEmpty()){
-            System.out.println("no customer created yet.");
-            return;
-        }
-        boolean [] flag ={false};
-        customerRepository.findAll().stream().
-                filter(customer ->
+    public List<CustomerResponse> findNotActiveCustomers(){
+       return customerRepository.findAll().stream()
+               .filter(customer ->
                         customer.getLastOrder()==null||
-                                ChronoUnit.DAYS.between(customer.getLastOrder(),LocalDateTime.now())>30).
-                forEach(customer ->{
-                    System.out.println(customer.getName());
-                    flag[0]=true;
-                });
-        if(!flag[0])
-            System.out.println("there is no nonactive customers.");
+                                ChronoUnit.DAYS.between(customer.getLastOrder(),LocalDateTime.now())>30)
+               .map(customerMapper::toCustomerResponse).toList();
+
     }
 
-    public void recalculateStatistics(Order order){
-        System.out.println("recalculate order statistics of status "+order.getOrderStatus());
-    }
-
-    public int setPromotionConditions(List<PromotionCondition> conditions){
-        System.out.println("""
-                filter criteria:\s
-                1- district.
-                2- expiry date.
-                3- first time customer.
-                4- minimum subtotal.
-                enter 5 if you don't want conditions.""");
-        int choice = InputValidation.setFilterOption("enter condition number: ");
-        try {
-            ConditionFactory.setParameters(choice);
-        }catch (IllegalArgumentException e){
-            System.out.println(e.getMessage());
-            return 0;
-        }
-        try {
-            conditions.add(ConditionFactory.create(choice));
-        }catch (IllegalStateException e){
-            return choice;
-        }
-        return choice;
-    }
 
 }

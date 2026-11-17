@@ -4,19 +4,15 @@ import org.route.exception.PromotionException;
 import org.route.model.Customer;
 import org.route.model.Order;
 import org.route.model.OrderInvoice;
+import org.springframework.http.HttpStatus;
 
 
-public class ExpiryDateCondition implements PromotionCondition{
-    private final int expirationDate;
-
-    public ExpiryDateCondition(int expirationDate) {
-        this.expirationDate = expirationDate;
-    }
+public record ExpiryDateCondition(int expirationDate) implements PromotionCondition {
 
 
     @Override
     public void checkCondition(OrderInvoice invoice, Customer customer, Order order) {
-        if(invoice.getOrderDate().getMonthValue()==expirationDate)
-            throw new PromotionException("promotion is expired");
+        if (invoice.getOrderDate().getMonthValue() == expirationDate)
+            throw new PromotionException(HttpStatus.BAD_REQUEST,"promotion is expired");
     }
 }

@@ -1,11 +1,12 @@
 package org.route.repository;
 
 
-import lombok.RequiredArgsConstructor;
+import jakarta.annotation.PostConstruct;
 import org.route.model.Address;
 import org.route.model.Customer;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +16,14 @@ import java.util.Optional;
 public class CustomerRepository {
 
    private final Map<Integer, Customer> customers=new HashMap<>();
+   @PostConstruct
+   public void init(){
+       customers.put(1,
+               new Customer("mayar",
+                       "01156421168",
+                       new Address("nasr city","ebvgbeg"),
+                       BigDecimal.valueOf(2000)));
+   }
 
    public List<Customer> findAll()
     {
@@ -31,13 +40,7 @@ public class CustomerRepository {
         customers.put(customer.getId(), customer);
     }
 
-    public List<String> findDistricts() {
-        return customers.values().stream()
-                .flatMap(customer -> customer.getAddresses().stream())
-                .map(Address::getDistrict)
-                .distinct()
-                .toList();
-    }
+
 
 
 

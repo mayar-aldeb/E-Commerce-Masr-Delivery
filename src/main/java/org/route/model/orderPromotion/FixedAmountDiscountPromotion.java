@@ -11,9 +11,9 @@ import java.util.List;
 public class FixedAmountDiscountPromotion extends Promotion {
     private final BigDecimal amount;
 
-    public FixedAmountDiscountPromotion(BigDecimal amount, List<PromotionCondition> condition) {
-        super(condition);
+    public FixedAmountDiscountPromotion(BigDecimal amount,String promotionCode,List<PromotionCondition> promotionCondition) {
         this.amount = amount;
+        super(promotionCode,promotionCondition);
     }
 
     @Override
@@ -23,10 +23,5 @@ public class FixedAmountDiscountPromotion extends Promotion {
             return false;
         invoice.setSubTotal(invoice.getSubTotal().subtract(amount));
         return true;
-    }
-
-    @Override
-    public String displayPromotionType() {
-        return "fixed amount off promotion";
     }
 }

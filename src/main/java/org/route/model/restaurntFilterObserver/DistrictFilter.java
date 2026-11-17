@@ -4,12 +4,7 @@ import org.route.model.Restaurant;
 
 import java.util.List;
 
-public class DistrictFilter implements RestaurantFilterListener {
-    private final String district;
-
-    public DistrictFilter(String district) {
-        this.district = district;
-    }
+public record DistrictFilter(String district) implements RestaurantFilterListener {
 
     @Override
     public List<Restaurant> filterRestaurants(List<Restaurant> restaurants) {

@@ -7,12 +7,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 
-public class PriceCeilingFilter implements RestaurantFilterListener {
-    private final BigDecimal priceCeiling;
-
-    public PriceCeilingFilter(BigDecimal priceCeiling) {
-        this.priceCeiling = priceCeiling;
-    }
+public record PriceCeilingFilter(BigDecimal priceCeiling) implements RestaurantFilterListener {
 
     @Override
     public List<Restaurant> filterRestaurants(List<Restaurant> restaurants) {

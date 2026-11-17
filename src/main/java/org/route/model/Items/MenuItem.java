@@ -1,7 +1,10 @@
 package org.route.model.Items;
 
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.route.model.Restaurant;
+
 
 import java.math.BigDecimal;
 import java.util.Objects;
@@ -9,11 +12,13 @@ import java.util.Objects;
 
 @Getter
 @Setter
-public abstract class MenuItem {
-    private final int id;
+@NoArgsConstructor
+public  abstract class MenuItem {
+    private  int id;
     private String name;
     private BigDecimal price;
     private String cuisine;
+    private Restaurant restaurant;
     private int preparationTime;
     private int stock;
     private boolean available;
@@ -28,26 +33,11 @@ public abstract class MenuItem {
         this.stock=stock;
     }
 
-    public abstract BigDecimal calculatePrice();
-
-    public void displayItem(){
-        System.out.println(id+"- "+name+": "+price+" -> "
-                +(available?"Available.":"Not Available.")+
-                " -> stock = "+stock);
+    public BigDecimal calculatePrice(){
+        return BigDecimal.ZERO;
     }
 
-    @Override
-    public String toString() {
-        return "MenuItem{" +
-                "id=" + id +
-                ", name='" + name + '\'' +
-                ", price=" + price +
-                ", cuisine='" + cuisine + '\'' +
-                ", preparationTime=" + preparationTime +
-                ", stock=" + stock +
-                ", available=" + available +
-                '}';
-    }
+
 
     @Override
     public boolean equals(Object o) {

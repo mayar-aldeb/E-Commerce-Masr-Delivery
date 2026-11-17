@@ -1,37 +1,45 @@
 package org.route.model;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import org.route.enums.CustomerLoyaltyTier;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Getter
 @Setter
 public class Customer {
     private static int count=0;
-    private final int id;
+    private int id;
+    @NotBlank
     private String name;
+    @Pattern(regexp = "01[0125]\\d{8}",message = "invalid phone number.")
     private String phone;
-    private List<Address> addresses;
+    private final List<Address> addresses=new ArrayList<>();
+    @Positive
     private BigDecimal balance;
     private int completedOrders;
     private CustomerLoyaltyTier loyaltyTier;
     private LocalDateTime lastOrder;
-    private List<Restaurant> search;
 
-    public Customer(String name, String phone, List<Address> addresses,Address address, BigDecimal balance,List<Restaurant> search) {
-        this.id = ++count;
+
+    public Customer(String name, String phone,Address address, BigDecimal balance) {
         this.name = name;
         this.phone = phone;
-        this.addresses=addresses;
         this.addresses.add(address);
         this.lastOrder=null;
         this.balance = balance;
-        this.search=search;
         this.loyaltyTier=CustomerLoyaltyTier.BRONZE;
+    }
+
+   public static int createCount(){
+        return ++count;
     }
 
 

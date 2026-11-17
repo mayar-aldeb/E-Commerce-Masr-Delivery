@@ -1,65 +1,50 @@
 package org.route.service;
 
-import org.route.enums.VehicleType;
 import lombok.RequiredArgsConstructor;
+import org.route.dto.rider.RiderRequest;
+import org.route.exception.RiderException;
+import org.route.mapper.RiderMapper;
 import org.route.model.Order;
 import org.route.model.Rider;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.route.repository.RiderRepository;
-import org.route.validation.InputValidation;
+
+import java.util.List;
 
 
 @Service
 @RequiredArgsConstructor
 public class RiderService {
     private final RiderRepository riderRepository;
+    private final RiderMapper riderMapper;
 
-
-    public void updateDashboard(Order order){
-        System.out.println("new dashboard "+order.getOrderStatus());
+    public void addRider(RiderRequest riderRequest){
+        Rider rider=riderMapper.toEntity(riderRequest);
+        rider.setId(Rider.createId());
+        rider.setAvailable(true);
+        riderRepository.addRider(rider);
     }
 
-    public void displayRiderInfo(Rider rider){
-        System.out.println("rider name: "+rider.getName());
-        System.out.println("rider vehicle type: "+rider.getVehicleType());
-        System.out.println("rider completed deliveries: "+rider.getCompletedOrders());
-        System.out.println("rider is "+(rider.isAvailable()?"available.":"unavailable."));
+
+    public List<Rider> displayRiders(){
+        return riderRepository.findAllRiders();
     }
 
-    public Rider findRiderById(){
-       int riderId= InputValidation.setInt("enter rider ID: ");
-        return riderRepository.findRiderById(riderId).orElseThrow(()->new RuntimeException("Rider not found"));
+    public Rider findRiderById(int riderId){
+        return riderRepository.findRiderById(riderId).orElseThrow(()->new RiderException(HttpStatus.NOT_FOUND,"Rider not found"));
     }
 
     public void assignOrderToRider(Rider rider,Order order){
         rider.setDistrict(order.getDeliveryAddress().getDistrict());
-        rider.setActiveOrderId(order.getId());
+        rider.setActiveOrder(order);
     }
 
     public void deliverOrder(Rider rider,Order order){
         rider.setDistrict(null);
         rider.setCompletedOrders(rider.getCompletedOrders()+1);
-        rider.setActiveOrderId(0);
+        rider.setActiveOrder(null);
         rider.getCompletedDeliveries().addFirst(order);
     }
 
-    public VehicleType setVehicleType(){
-        System.out.println("""
-                1- Motorcycle.
-                2- Bicycle.
-                3- Car.""");
-        System.out.print("Enter vehicle type: ");
-        int choice=0;
-        while (choice<1||choice>3){
-            choice= InputValidation.setInt("enter valid choice: ");
-        }
-
-        return switch (choice){
-            case 1->VehicleType.MOTORCYCLE;
-            case 2->VehicleType.BICYCLE;
-            case 3->VehicleType.CAR;
-            default -> throw new IllegalStateException("Unexpected value: " + choice);
-        };
-
-    }
 }

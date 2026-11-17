@@ -14,11 +14,4 @@ public class Address {
         this.details = details;
     }
 
-    @Override
-    public String toString() {
-        return "Address{" +
-                "district='" + district + '\'' +
-                ", details='" + details + '\'' +
-                '}';
-    }
 }

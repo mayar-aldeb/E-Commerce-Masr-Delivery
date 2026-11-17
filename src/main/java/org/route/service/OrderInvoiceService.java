@@ -1,15 +1,17 @@
 package org.route.service;
 
 import lombok.RequiredArgsConstructor;
+import org.route.config.OrderProperties;
+import org.route.exception.OrderException;
 import org.route.model.Customer;
 import org.route.model.Items.OrderItem;
 import org.route.model.Order;
 import org.route.model.OrderInvoice;
 import org.route.model.orderPromotion.Promotion;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.route.repository.OrderInvoiceRepository;
 import org.route.repository.PromotionRepository;
-import org.route.validation.InputValidation;
 
 import java.math.BigDecimal;
 
@@ -19,10 +21,12 @@ public class OrderInvoiceService {
     private final OrderService orderService;
     private final OrderInvoiceRepository invoiceRepository;
     private final PromotionRepository promotionRepository;
+    private final OrderProperties  orderProperties;
+    private final DeliveryDistanceService  deliveryDistanceService;
 
 
     public OrderInvoice createInvoice(Order order){
-        return new OrderInvoice(order.getId(),order.getPlacedAt());
+        return new OrderInvoice(order);
     }
 
     private void calculateSubTotal(Order order, OrderInvoice invoice){
@@ -33,11 +37,17 @@ public class OrderInvoiceService {
         invoice.setSubTotal(total);
     }
 
-    private void calculateDeliveryFee(OrderInvoice invoice, int distance, Customer customer){
-        distance-=3;
+    private void calculateDeliveryFee(OrderInvoice invoice,Customer customer,Order order){
+        double distance;
+        try {
+            distance=deliveryDistanceService.calculate(order.getRestaurant().getDistrict(),order.getDeliveryAddress().getDistrict());
+        }catch (RuntimeException e){
+            throw new OrderException(HttpStatus.NOT_FOUND, e.getMessage());
+        }
+        distance-=orderProperties.getDeliveryFree();
         invoice.setDeliveryFee(
-                OrderInvoice.DELIVERY_BASE.add(
-                        OrderInvoice.DELIVERY_FEE_PER_KM.multiply(BigDecimal.valueOf(distance))));
+               orderProperties.getDeliveryBase().add(
+                        orderProperties.getDeliveryFeePerKm().multiply(BigDecimal.valueOf(distance))));
 
         BigDecimal loyaltyDiscount=customer.getLoyaltyTier().getDeliveryFeeDiscount().
                                             multiply(invoice.getDeliveryFee());
@@ -46,11 +56,11 @@ public class OrderInvoiceService {
     }
 
     private void calculateServiceFee(OrderInvoice invoice){
-        invoice.setServiceFee(invoice.getSubTotal().multiply(OrderInvoice.SERVICE_RATE));
+        invoice.setServiceFee(invoice.getSubTotal().multiply(orderProperties.getServiceRate()));
     }
 
     public boolean applyPromotion(Promotion promotion,OrderInvoice invoice,Customer customer,Order order){
-        if(invoice.isPromotion())
+        if(invoice.getPromotion()!=null)
             return false;
         return promotion.applyPromotion(invoice,customer,order);
     }
@@ -59,44 +69,32 @@ public class OrderInvoiceService {
         return invoice.getSubTotal().add(invoice.getDeliveryFee()).add(invoice.getServiceFee());
     }
 
-    public void displayInvoice(OrderInvoice invoice){
-        System.out.println("Subtotal = "+invoice.getSubTotal());
-        System.out.println("Delivery fee = "+invoice.getDeliveryFee());
-        System.out.println("Service fee = "+invoice.getServiceFee());
-        System.out.println("invoice total = "+calculateTotal(invoice));
-    }
-
-    public void calculateInvoice(Order order, OrderInvoice invoice, int distance, Customer customer){
+    public void calculateInvoice(Order order, OrderInvoice invoice, Customer customer){
         calculateSubTotal(order,invoice);
-        calculateDeliveryFee(invoice,distance,customer);
+        calculateDeliveryFee(invoice,customer,order);
         calculateServiceFee(invoice);
 
     }
 
-    public OrderInvoice findInvoiceById(int id){
-        return invoiceRepository.findById(id).orElseThrow(()->new RuntimeException("there is no invoice for this order."));
+    public OrderInvoice findInvoiceById(Order order){
+        return invoiceRepository.findById(order).orElseThrow(()->new OrderException(HttpStatus.NOT_FOUND,"there is no invoice for this order."));
     }
 
-    public void applyPromotion(OrderInvoice invoice, Customer customer, Order order){
-        int choice =InputValidation.setInt("do you want to add promotion?\n1.Yes\n2.No\nEnter your choice: ");
-        if(choice!=1)
+    public void applyPromotion(OrderInvoice invoice, Customer customer, Order order,String promotionCode){
+        if(promotionCode==null)
             return;
-        String promotionCode=InputValidation.setValidString("Enter Promotion Code: ");
-        Promotion promotion=promotionRepository.getPromotion(promotionCode.toLowerCase()).orElseThrow(()->new RuntimeException("invalid promotion code"));
+        Promotion promotion=promotionRepository.getPromotion(promotionCode.toLowerCase()).orElseThrow(()->new OrderException(HttpStatus.NOT_FOUND,"invalid promotion code"));
         if(applyPromotion(promotion,invoice,customer,order)){
-            System.out.println("Promotion applied successfully.");
-            invoice.setPromotion(true);
+            invoice.setPromotion(promotion);
         }
     }
 
-    public void setInvoice(Order order,Customer customer){
+    public void setInvoice(Order order,Customer customer,String promotionCode){
         OrderInvoice invoice=createInvoice(order);
-        int distance=InputValidation.setInt("enter distance between restaurant and delivery address: ");
-        calculateInvoice(order,invoice,distance,customer);
+        calculateInvoice(order,invoice,customer);
         invoiceRepository.save(invoice);
-        applyPromotion(invoice,customer,order);
+        applyPromotion(invoice,customer,order,promotionCode);
         order.setTotalPrice(calculateTotal(invoice));
-        displayInvoice(invoice);
     }
 
 }

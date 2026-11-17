@@ -6,16 +6,11 @@ import java.util.List;
 
 
 
-public class CuisineFilter implements RestaurantFilterListener {
-    private final String cuisine;
-
-    public CuisineFilter(String cuisine) {
-        this.cuisine = cuisine;
-    }
+public record CuisineFilter(String cuisine) implements RestaurantFilterListener {
 
     @Override
     public List<Restaurant> filterRestaurants(List<Restaurant> restaurants) {
-        return  restaurants.stream().
+        return restaurants.stream().
                 filter(restaurant -> restaurant.getCuisines().contains(cuisine)).
                 toList();
     }

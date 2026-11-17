@@ -1,8 +1,9 @@
 package org.route.model.orderStatus;
 
 import org.route.enums.OrderStatus;
-import org.route.exception.IllegalOrderTransitionException;
+import org.route.exception.OrderException;
 import org.route.model.Order;
+import org.springframework.http.HttpStatus;
 
 public class PreparingState extends OrderState{
 
@@ -20,7 +21,7 @@ public class PreparingState extends OrderState{
 
     @Override
     public  void prepare(Order order){
-        throw new IllegalOrderTransitionException("order already preparing");
+        throw new OrderException(HttpStatus.BAD_REQUEST,"order already preparing");
     }
 
 

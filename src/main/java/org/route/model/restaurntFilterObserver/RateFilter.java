@@ -5,12 +5,7 @@ import org.route.model.Restaurant;
 import java.util.List;
 
 
-public class RateFilter implements RestaurantFilterListener{
-    private final double rate;
-
-    public RateFilter(double rate) {
-        this.rate = rate;
-    }
+public record RateFilter(double rate) implements RestaurantFilterListener{
 
     @Override
     public List<Restaurant> filterRestaurants(List<Restaurant> restaurants) {

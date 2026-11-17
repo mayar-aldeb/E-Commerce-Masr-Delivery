@@ -1,14 +1,15 @@
-import org.route.AppConfig;
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
-import org.route.platform.*;
+package org.route;
 
-void main() {
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
-var context = new AnnotationConfigApplicationContext(AppConfig.class);
+@SpringBootApplication
+@ConfigurationPropertiesScan
+public class Main {
 
-Platform platform=context.getBean(Platform.class);
-
-    platform.platformMenu();
-
+     void main() {
+        SpringApplication.run(Main.class);
+    }
 
 }

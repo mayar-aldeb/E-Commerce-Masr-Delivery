@@ -2,24 +2,18 @@ package org.route.service;
 
 import org.route.enums.CustomerLoyaltyTier;
 import org.route.enums.OrderStatus;
-import org.route.exception.StockShortageException;
+import org.route.exception.OrderException;
 import lombok.RequiredArgsConstructor;
 import org.route.model.*;
 import org.route.model.Items.Combo;
 import org.route.model.Items.MenuItem;
 import org.route.model.Items.OrderItem;
-import org.route.model.orderStatus.OrderState;
-import org.route.model.orderStatus.PlacedState;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.route.repository.OrderRepository;
-import org.route.validation.InputValidation;
 import org.route.validation.RestaurantValidation;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 
 @Service
@@ -42,79 +36,32 @@ public class OrderService {
         order.setTotalPrice(totalPrice);
     }
 
-    public void displayOrderItem(OrderItem orderItem){
-        orderItem.getItem().displayItem();
-        System.out.println("Quantity: "+orderItem.getQuantity());
-        System.out.println("---------------------------------");
-    }
-
-    public void displayOrderItems(Order order){
-        System.out.println("Order Items : ");
-        order.getItems().values().forEach(this::displayOrderItem);
-    }
-
-    public void displayOrder(Order order){
-        System.out.println("Order ID: "+order.getId());
-        System.out.println("Order total price: "+order.getTotalPrice());
-        System.out.println("Order status: "+order.getOrderStatus());
-        displayOrderItems(order);
-    }
-
-    public void createOrderItem(Order order,MenuItem item,int quantity){
-        OrderItem orderItem=order.getItems().get(item);
+    public void createOrderItem(Order order,OrderItem newOrderItem){
+        OrderItem orderItem=order.getItems().get(newOrderItem.getItem());
         if(orderItem!=null){
-            orderItem.setQuantity(orderItem.getQuantity()+quantity);
-            System.out.println("order item's quantity updated successfully.");
-            displayOrderItems(order);
+            orderItem.setQuantity(orderItem.getQuantity()+newOrderItem.getQuantity());
             return;
         }
-        orderItem=new OrderItem(quantity,item);
-        order.getItems().put(item,orderItem);
-        System.out.println("order item added successfully.");
-        displayOrderItems(order);
+        order.getItems().put(newOrderItem.getItem(),newOrderItem);
     }
 
-    public Order findOrderById(){
-        int orderId =InputValidation.setInt("enter order ID: ");
-        return orderRepository.findById(orderId).orElseThrow(()->new RuntimeException("Order ID not found!"));
+    public Order findOrderById(int orderId){
+        return orderRepository.findById(orderId).orElseThrow(()->new OrderException(HttpStatus.NOT_FOUND,"Order ID not found!"));
     }
 
-    public void addItemToOrder(Order order, Map<Integer, MenuItem> items){
-        MenuItem item=restaurantService.findItemById(items);
-        if(item==null)
-            return;
-        if(item instanceof Combo combo){
-            if(combo.getComboItems().isEmpty()){
-                System.out.println("you can't add empty combo.");
-                return;
-            }
+    public void addItemToOrder(Order order,int menuItemId,int quantity){
+        MenuItem menuItem =restaurantService.checkItem(menuItemId,order.getRestaurant());
+        if(menuItem instanceof Combo combo){
+            if(combo.getComboItems().isEmpty())
+                throw new OrderException(HttpStatus.BAD_REQUEST,"you can't add empty combo.");
         }
-        if(restaurantService.isUnValidItem(item))
-            return;
-        int quantity=InputValidation.setInt("enter item quantity: ");
-        try {
-            RestaurantValidation.validateStock(item,quantity);
-        } catch (StockShortageException e){
-            System.out.println(e.getMessage());
-            return;
-        }
-        item.setStock(item.getStock()-quantity);
-        createOrderItem(order,item,quantity);
+        RestaurantValidation.validateItem(menuItem);
+        RestaurantValidation.validateStock(menuItem,quantity);
+        OrderItem orderItem = new OrderItem(quantity,menuItem) ;
+        orderItem.getItem().setStock(menuItem.getStock()-quantity);
+        createOrderItem(order,orderItem);
     }
 
-    public void removeItemFromOrder(Order order,Map<Integer, MenuItem> items){
-        MenuItem item=restaurantService.findItemById(items);
-        if(item==null)
-            return;
-        OrderItem orderItem =order.getItems().remove(item);
-        if(orderItem==null){
-            System.out.println("this order doesn't have this item.");
-            return;
-        }
-        item.setStock(item.getStock()+orderItem.getQuantity());
-        System.out.println("item removed successfully.");
-        displayOrderItems(order);
-    }
 
     public void refundOrderQuantity(Order order){
         for(OrderItem orderItem:order.getItems().values()){
@@ -122,56 +69,20 @@ public class OrderService {
         }
     }
 
-    public void createOrderItems(Order order, Map<Integer, MenuItem> items){
-        int choice;
-        do{
-            choice=InputValidation.setItemOption();
-            if(choice==1)
-                addItemToOrder(order, items);
-            else if(choice==2)
-                removeItemFromOrder(order, items);
-            else if(choice==3){
-                if(order.getItems().isEmpty()){
-                    System.out.println("you cannot confirm order without items.");
-                    choice=0;
-                }
-            }
-        }while (choice!=3);
+    public void createOrder(Order order){
+        order.setId(++orderCount);
+        order.setOrderStatus(OrderStatus.PLACED);
+        order.setOrderPriority(order.getCustomer().getLoyaltyTier() == CustomerLoyaltyTier.GOLD ? 0 : 1);
     }
 
-    public Order createOrder(int customerId, int restaurantId, Address address, int orderPriority, Map<MenuItem,OrderItem> items, OrderState state){
-        return Order.builder()
-                .id(++orderCount)
-                .items(items)
-                .customerId(customerId)
-                .restaurantId(restaurantId)
-                .deliveryAddress(address)
-                .orderStatus(OrderStatus.PLACED)
-                .state(state)
-                .placedAt(LocalDateTime.now())
-                .orderPriority(orderPriority)
-                .build();
-    }
-
-    public Address setAddressToOrder(List<Address> addresses){
-        int count =0;
-        for (Address address:addresses){
-            System.out.println(++count+"-"+address);
-        }
-        int choice=InputValidation.setInt("Choose Address: ");
-        return addresses.get(choice-1);
-    }
-
-    public Order placeOrder(Customer customer,Restaurant restaurant,Address address){
-        int orderPriority= customer.getLoyaltyTier() == CustomerLoyaltyTier.GOLD ? 0 : 1;
-        Order order= createOrder(customer.getId(),restaurant.getId(),address,orderPriority,new LinkedHashMap<>(),new PlacedState());
-        createOrderItems(order, restaurant.getItems());
+    public void placeOrder(Order order){
+        createOrder(order);
         calculateOrderTotalPrice(order);
         orderRepository.save(order);
-        return order;
     }
 
     public boolean checkOrderWithUnavailableItems(Order order){
+
         return order.getItems().values().stream()
                 .anyMatch(item->!item.getItem().isAvailable());
     }

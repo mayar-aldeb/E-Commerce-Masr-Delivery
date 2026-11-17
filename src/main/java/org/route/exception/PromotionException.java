@@ -1,8 +1,11 @@
 package org.route.exception;
 
-public class PromotionException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpClientErrorException;
+
+public class PromotionException extends HttpClientErrorException {
     
-    public PromotionException(String message) {
-        super(message);
+    public PromotionException(HttpStatus httpStatus,String message) {
+        super(httpStatus,message);
     }
 }

@@ -9,8 +9,9 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public class FreeDeliveryPromotion extends Promotion {
-    public FreeDeliveryPromotion(List<PromotionCondition> condition) {
-        super(condition);
+
+    public FreeDeliveryPromotion(String promotionCode,List<PromotionCondition> promotionCondition) {
+        super(promotionCode,promotionCondition);
     }
 
     @Override
@@ -18,11 +19,6 @@ public class FreeDeliveryPromotion extends Promotion {
         checkConditions(invoice,customer,order);
         invoice.setDeliveryFee(BigDecimal.valueOf(0));
         return true;
-    }
-
-    @Override
-    public String displayPromotionType() {
-        return "free delivery";
     }
 
 

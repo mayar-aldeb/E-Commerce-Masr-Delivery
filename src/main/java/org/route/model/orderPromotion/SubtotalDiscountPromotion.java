@@ -13,8 +13,8 @@ public class SubtotalDiscountPromotion extends Promotion {
     private final BigDecimal discountRate;
     private final BigDecimal maximumDiscountCap;
 
-    public SubtotalDiscountPromotion(List<PromotionCondition> condition, BigDecimal discountRate, BigDecimal maximumDiscountCap) {
-        super(condition);
+    public SubtotalDiscountPromotion(BigDecimal discountRate, BigDecimal maximumDiscountCap,String promotionCode,List<PromotionCondition> promotionCondition) {
+        super(promotionCode,promotionCondition);
         this.discountRate = discountRate;
         this.maximumDiscountCap = maximumDiscountCap;
     }
@@ -30,8 +30,6 @@ public class SubtotalDiscountPromotion extends Promotion {
         return true;
     }
 
-    @Override
-    public String displayPromotionType() {
-        return "subtotal discount with a maximum discount cap";
-    }
+
+
 }

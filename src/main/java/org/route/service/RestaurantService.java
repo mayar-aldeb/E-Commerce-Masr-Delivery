@@ -1,20 +1,18 @@
 package org.route.service;
 
-import org.route.exception.ClosedRestaurantException;
-import org.route.exception.UnavailableItemException;
+import org.route.dto.restaurant.RestaurantRequest;
+import org.route.exception.RestaurantException;
 import lombok.RequiredArgsConstructor;
+import org.route.mapper.RestaurantMapper;
 import org.route.model.*;
 import org.route.model.Items.Combo;
-import org.route.model.Items.ItemFactory;
 import org.route.model.Items.MenuItem;
-import org.route.model.restaurntFilterObserver.FilterFactory;
 import org.route.model.restaurntFilterObserver.RestaurantFilterListener;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.route.repository.RestaurantRepository;
-import org.route.validation.InputValidation;
 import org.route.validation.RestaurantValidation;
 
-import java.math.BigDecimal;
 import java.util.*;
 
 
@@ -22,24 +20,24 @@ import java.util.*;
 @RequiredArgsConstructor
 public class RestaurantService {
 
-    private final CustomerService customerService;
     private final RestaurantRepository restaurantRepository;
+    private final RestaurantMapper restaurantMapper;
 
 
-    public Restaurant findRestaurantById(){
 
-        int restaurantId = InputValidation.setInt("enter restaurant ID: ");
-        return restaurantRepository.findById(restaurantId).orElseThrow(()-> new RuntimeException("invalid ID."));
+
+    public List<Restaurant> findAllRestaurants(){
+        return restaurantRepository.findAll();
+    }
+
+    public void deleteRestaurant(int id){
+        restaurantRepository.delete(id).orElseThrow(()->new RestaurantException(HttpStatus.NOT_FOUND,"Restaurant not found"));
     }
 
 
-
-    public MenuItem createItem(int type, int id, String name, String cuisine, BigDecimal price, int preparationTime,int stock){
-        return ItemFactory.create(type,id,name,cuisine,price,preparationTime,stock);
-    }
-
-    public void recordAuditLog(Order order){
-        System.out.println("record new order status "+order.getOrderStatus());
+    public List<MenuItem> findAllMenuItems(int restaurantId){
+        Restaurant restaurant=restaurantRepository.findById(restaurantId).orElseThrow(()->new RestaurantException(HttpStatus.NOT_FOUND,"Restaurant not found"));
+        return restaurant.getItems().values().stream().toList();
     }
 
     public void addItemToCombo(MenuItem item, Combo combo){
@@ -54,135 +52,53 @@ public class RestaurantService {
         combo.getComboItems().remove(item.getId());
     }
 
-    public int setRestaurantFilters(List<RestaurantFilterListener> filters){
-        System.out.println("""
-                filter criteria:\s
-                1- cuisine.
-                2- district.
-                3- price ceiling.
-                4- rating.
-                enter 5 if you don't want filter.""");
-        int choice = InputValidation.setFilterOption("enter filter number: ");
-        FilterFactory.setParameters(choice);
-        try {
-            filters.add(FilterFactory.create(choice));
-        }catch (IllegalArgumentException e){
-            return choice;
-        }
-        return choice;
+    public List<Restaurant> browseRestaurants(List<RestaurantFilterListener> filters){
+        List<Restaurant> filteredRestaurants=  restaurantRepository.findAll();
+        for(var filter:filters)
+            filteredRestaurants= filter.filterRestaurants(filteredRestaurants);
+        return filteredRestaurants;
     }
 
-    public Restaurant findRestaurantById(Customer customer){
-            int restaurantId=InputValidation.setInt("enter Restaurant ID: ");
-        Restaurant restaurant=customerService.findInSearch(customer,restaurantId);
-        if(restaurant==null){
-            restaurant =restaurantRepository.findById(restaurantId).orElseThrow(()->new RuntimeException("Restaurant not found"));
-            customerService.addToSearch(customer,restaurant);
-        }
-        try {
-            RestaurantValidation.isOpen(restaurant);
-        }catch (ClosedRestaurantException e){
-            System.out.println(e.getMessage());
-            return null;
-        }
+    public List<Restaurant> searchRestaurants(String search){
+        return restaurantRepository.findAll().stream().
+                filter(restaurant -> restaurant.getCuisines().contains(search) ||
+                        restaurant.getName().toLowerCase().contains(search.toLowerCase())).toList();
+    }
+
+    public Restaurant findRestaurantById(int id){
+        Restaurant restaurant =restaurantRepository.findById(id).orElseThrow(()->new RestaurantException(HttpStatus.NOT_FOUND,"Restaurant not found"));
+        RestaurantValidation.isOpen(restaurant);
         return restaurant;
     }
 
-    public Restaurant createRestaurant(String name, String district, double rate, Map<Integer,MenuItem> items, Set<String> cuisines){
-        RestaurantValidation.validateRate(rate);
-        return new Restaurant(name,district,rate,items,cuisines);
-
+    public void createRestaurant(RestaurantRequest restaurantRequest){
+        Restaurant restaurant = restaurantMapper.toRestaurant(restaurantRequest);
+        RestaurantValidation.validateRate(restaurant.getRate());
+        restaurantRepository.save(restaurant);
     }
 
-    public int setItemType(){
-        System.out.println("""
-                1- Combo.
-                2- Standard Item.
-                3- Weighted Item.""");
-        System.out.print("Enter your choice: ");
-        int choice=0;
-        while (choice<1||choice>3){
-            choice= InputValidation.setInt("enter valid choice: ");
-        }
-        return choice;
-    }
-
-    public void addItem(Restaurant restaurant,int type, String name, String cuisine, BigDecimal price, int preparationTime,int stock){
+    public void addItem(Restaurant restaurant, MenuItem item){
         restaurant.setItemCount(restaurant.getItemCount()+1);
-        restaurant.getCuisines().add(cuisine);
-        MenuItem item=createItem(type, restaurant.getItemCount(), name, cuisine, price, preparationTime,stock);
+        restaurant.getCuisines().add(item.getCuisine());
+        item.setId(restaurant.getItemCount());
         restaurant.setItem(item);
     }
 
-    public void displayRestaurant(Restaurant restaurant){
-        System.out.println("Restaurant ID: "+restaurant.getId());
-        System.out.println("Restaurant Name: "+restaurant.getName());
-        System.out.println("Restaurant Rating: "+restaurant.getRate());
-        System.out.println("Restaurant Status: "+(restaurant.isOpen()?"Open":"Close"));
-        System.out.println("Restaurant district: "+restaurant.getDistrict());
-        displayRestaurantItems(restaurant);
-        displayRestaurantCuisines(restaurant);
+
+    public MenuItem checkItem(int itemId, Restaurant restaurant){
+        if(!restaurant.getItems().containsKey(itemId))
+            throw new RestaurantException(HttpStatus.NOT_FOUND,"Item not found");
+        return restaurant.getItems().get(itemId);
     }
 
-
-    public void displayRestaurantItems(Restaurant restaurant){
-        if(restaurant.getItems().isEmpty()){
-            System.out.println("no items added yet.");
-            return;
-        }
-        System.out.println("Menu Items: ");
-        restaurant.getItems().values().forEach(MenuItem::displayItem);
-    }
-
-    public Restaurant viewRestaurantMenu(Customer customer){
-        Restaurant restaurant=findRestaurantById(customer);
-        if(restaurant==null)
-            return null;
-        displayRestaurantItems(restaurant);
-        return restaurant;
-    }
-
-    public boolean isUnValidItem(MenuItem item){
-        try {
-            RestaurantValidation.validateItem(item);
-        }catch (UnavailableItemException e){
-            System.out.println(e.getMessage());
-            return true;
-        }
-        return false;
-    }
-
-    public void displayRestaurantCuisines(Restaurant restaurant){
-        if(restaurant.getCuisines().isEmpty()){
-            System.out.println("no cuisines added yet.");
-            return;
-        }
-        System.out.println("cuisines: ");
-        restaurant.getCuisines().forEach(System.out::println);
-    }
-
-    public MenuItem findItemById(Map<Integer,MenuItem> items){
-        int itemId=InputValidation.setInt("enter item ID: ");
-        MenuItem item=items.get(itemId);
-        if(item==null) {
-            System.out.println("invalid ID.");
-            return null;
-        }
-        return item;
-    }
-
-    public Combo findComboById(Map<Integer,MenuItem> items){
-        int comboItem=InputValidation.setInt("enter combo ID: ");
-        MenuItem item =items.get(comboItem);
-        if(item ==null){
-            System.out.println("invalid ID.");
-            return null;
-        }
-        if(item instanceof Combo combo){
+    public Combo findComboById(Map<Integer,MenuItem> items,int comboId){
+        MenuItem item =items.get(comboId);
+        if(item ==null)
+            throw new RestaurantException(HttpStatus.NOT_FOUND,"Item not found");
+        if(item instanceof Combo combo)
             return combo;
-        }
-        System.out.println("this item is not combo.");
-        return null;
+
+        throw  new RestaurantException(HttpStatus.NOT_FOUND,"item is not Combo");
     }
 
 }
